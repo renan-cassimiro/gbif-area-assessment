@@ -101,7 +101,7 @@ load_area <- function(path, layer = NULL, id_column = NULL, fix_invalid = FALSE)
 #' Draw a single study-area polygon on an interactive map
 #'
 #' Requires the suggested packages `mapedit`, `leaflet` and `shiny`. The map
-#' opens in the browser, so it also works from `Rscript`.
+#' opens in the RStudio viewer pane when run from an interactive RStudio session, otherwise in the browser (needs a display).
 #'
 #' @return An `sf` object with exactly one polygon (`area_id = "area_01"`).
 #' @export
@@ -111,9 +111,21 @@ draw_area <- function() {
       stop("Package '", p, "' is required for mode = \"draw\". Install it with renv::install(\"", p, "\").", call. = FALSE)
     }
   }
+  in_rstudio <- requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()
+  has_display <- .Platform$OS.type == "windows" || Sys.info()[["sysname"]] == "Darwin" ||
+    nzchar(Sys.getenv("DISPLAY"))
+  if (in_rstudio) {
+    viewer <- shiny::paneViewer()
+  } else if (has_display) {
+    viewer <- shiny::browserViewer()
+  } else {
+    stop("Cannot open the drawing map: no display available (e.g. Rscript on a server). ",
+         "Run scripts/draw_area.R from an interactive RStudio console to save the polygon as a GPKG, ",
+         "then use input.area.mode: \"gpkg\".", call. = FALSE)
+  }
   lg_info("Opening interactive map: draw ONE polygon, then press 'Done'")
   map <- leaflet::addTiles(leaflet::leaflet())
-  feat <- mapedit::drawFeatures(map = map, viewer = shiny::browserViewer())
+  feat <- mapedit::drawFeatures(map = map, viewer = viewer)
   if (is.null(feat) || nrow(feat) == 0) stop("No geometry was drawn.", call. = FALSE)
   is_poly <- as.character(sf::st_geometry_type(feat)) %in% c("POLYGON", "MULTIPOLYGON")
   feat <- feat[is_poly, ]
