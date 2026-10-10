@@ -1,0 +1,26 @@
+Package: gbifareaassessment
+Title: Exploratory Assessment of GBIF Occurrence Data Availability in Study Areas
+Version: 0.1.0
+Authors@R: person(given = "Renan", role = c("aut", "cre"))
+Description: Small, reproducible tool to query, filter, summarise and visualise
+    GBIF occurrence records inside one or more study areas, with local caching
+    of raw GBIF responses and an automatically generated PDF report.
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends: R (>= 4.1.0)
+Imports:
+    rgbif,
+    sf,
+    dplyr,
+    tidyr,
+    ggplot2,
+    yaml,
+    logger,
+    rmarkdown,
+    knitr,
+    rlang
+Suggests:
+    mapedit,
+    leaflet,
+    shiny,
+    roxygen2

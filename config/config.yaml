@@ -1,0 +1,52 @@
+# gbif-area-assessment — configuração de exemplo
+# Caminhos relativos são resolvidos a partir da raiz do projeto.
+
+project:
+  name: "gbif_area_assessment"
+
+input:
+  area:
+    mode: "draw"                    # "gpkg" ou "draw" (mutuamente exclusivos)
+    path: null   # obrigatório se mode = "gpkg"; deve ser null se mode = "draw"
+    layer: null                     # obrigatório se o GPKG tiver mais de uma camada
+    id_column: null                 # coluna identificadora; null = detecção automática ou area_01, area_02, ...
+    fix_invalid: false              # true = corrige geometrias inválidas com st_make_valid() (registrado no log)
+
+gbif:
+  # Somente filtros declarados aqui são aplicados (nenhum filtro científico implícito).
+  # Qualquer argumento de filtro de rgbif::occ_data() é aceito; os principais são validados por tipo.
+  filters:
+    basisOfRecord:
+      - HUMAN_OBSERVATION
+      - PRESERVED_SPECIMEN
+    occurrenceStatus:
+      - PRESENT
+    hasCoordinate: true
+    hasGeospatialIssue: false
+    year:
+      min: 1900
+      max: 2026
+
+  query:                            # parâmetros técnicos da consulta (opcionais)
+    max_records: 100000             # limite da API de busca (offset + limit <= 100000)
+    page_size: 300
+    max_retries: 3
+    retry_wait_seconds: 5
+
+  cache:
+    enabled: true
+    directory: "data/cache/gbif"
+    use_cached: true
+    refresh: false
+
+analysis:                           # parâmetros descritivos (opcionais)
+  density_cell_km: 5                # lado da célula da grade de densidade
+  top_n: 10                         # nº de táxons/grupos mais frequentes por área
+  low_coverage_pct: 20              # abaixo disso a cobertura espacial é sinalizada no relatório
+  metric_crs: "auto"                # "auto" = Lambert azimutal de áreas iguais centrado nas áreas; ou um código (ex.: "EPSG:5880")
+
+output:
+  directory: "results"              # cada execução cria results/run_YYYYMMDD_HHMMSS/
+
+logging:
+  level: "INFO"                     # DEBUG, INFO, WARN, ERROR

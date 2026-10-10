@@ -1,0 +1,23 @@
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# renv (renv.lock and renv/activate.R SHOULD be versioned)
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/
+
+# Data and outputs
+data/cache/
+results/
+data/input/*
+!data/input/.gitkeep
+
+# OS
+.DS_Store

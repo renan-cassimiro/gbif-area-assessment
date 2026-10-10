@@ -1,0 +1,116 @@
+---
+title: "GBIF — exploratory assessment of data availability"
+output: pdf_document
+params:
+  context_file: NULL
+header-includes:
+  - \usepackage{float}
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \floatplacement{figure}{H}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, comment = "")
+ctx <- readRDS(params$context_file)
+tbl <- function(df, ...) {
+  if (is.null(df) || nrow(df) == 0) return(cat("_No data._\n\n"))
+  print(knitr::kable(df, format = "latex", booktabs = TRUE, linesep = "", digits = 2,
+                     longtable = nrow(df) > 25, row.names = FALSE, ...))
+}
+# LaTeX runs inside a scratch directory where render_report() copied the figures to
+# figures/; only short relative names reach LaTeX (no drive letters, user names or spaces).
+rel_path <- function(path) paste0("figures/", basename(path))
+fig <- function(path, cap = NULL) {
+  if (!is.null(path) && !is.na(path) && file.exists(path)) {
+    cat("\n\\begin{figure}[H]\n\\centering\n\\includegraphics[width=\\textwidth,height=0.45\\textheight,keepaspectratio]{",
+        rel_path(path), "}\n", if (!is.null(cap)) paste0("\\caption{", cap, "}\n"), "\\end{figure}\n\n", sep = "")
+  }
+}
+n_areas <- nrow(ctx$areas)
+```
+
+# Identification
+
+```{r ident, results="asis"}
+env <- ctx$environment
+kv <- data.frame(
+  Item = c("Project", "Run", "Generated at", "Tool version", "Git",
+           "R", "Platform", "renv active", "renv.lock md5", "Config file"),
+  Value = c(ctx$project, ctx$run_id, ctx$generated_at, ctx$tool_version,
+            if (ctx$git$available) paste0(ctx$git$commit, " (", ctx$git$branch,
+                                          if (isTRUE(ctx$git$dirty)) ", uncommitted changes" else "", ")") else "not available",
+            env$r_version, env$platform,
+            if (env$renv_active) "yes" else "no",
+            if (is.na(env$renv_lock_md5)) "no renv.lock" else env$renv_lock_md5,
+            ctx$config_path),
+  stringsAsFactors = FALSE)
+tbl(kv)
+```
+
+Effective configuration:
+
+```{r cfg}
+cfg <- ctx$config_effective
+cfg$gbif$filters_normalized <- NULL
+cfg$paths <- NULL
+cat(yaml::as.yaml(cfg, handlers = list(logical = yaml::verbatim_logical)))
+```
+
+# Study areas
+
+Number of areas: **`r n_areas`** (input mode: `r ctx$input_mode`).
+
+```{r areas, results="asis"}
+tbl(ctx$areas)
+fig(ctx$figures$areas_map)
+```
+
+# GBIF query
+
+```{r filters, results="asis"}
+cat("**Filters used**\n\n")
+tbl(ctx$filters_table)
+cat("**Data source and counts**\n\n")
+r <- ctx$retrieval
+tbl(data.frame(area = r$area_id, source = toupper(r$source), queried_at = r$queried_at,
+               total_no_filters = r$n_total_without_filters, retrieved = r$n_retrieved,
+               processed = ctx$metrics$area$n_processed))
+cat("**Cache identifiers**\n\n")
+tbl(data.frame(area = r$area_id, cache_key = r$cache_key))
+cat("**Records removed during processing**\n\n")
+tbl(ctx$removed)
+cat("**Warnings and errors**\n\n")
+w <- unique(ctx$warnings)
+if (length(w)) cat(paste0("- ", gsub("([_#$%&{}])", "\\\\\\1", w)), sep = "\n") else cat("_None._\n")
+```
+
+# Characterisation
+
+```{r charac, results="asis"}
+m <- ctx$metrics
+cat("## Records\n\n"); tbl(m$area[, c("area_id", "area_km2", "n_processed", "records_per_km2")])
+cat("## Taxonomic richness\n\n"); tbl(m$taxonomic$summary)
+cat("\n\n## Main groups (class)\n\n"); tbl(m$taxonomic$top_classes)
+fig(ctx$figures$taxon_groups)
+cat("\n\n## Spatial distribution\n\n"); tbl(m$spatial)
+for (id in names(ctx$figures$records_maps)) { fig(ctx$figures$records_maps[[id]]); fig(ctx$figures$density_maps[[id]]) }
+cat("\n\n## Temporal distribution\n\n"); tbl(m$temporal$summary)
+fig(ctx$figures$temporal)
+fig(ctx$figures$records_by_area); fig(ctx$figures$species_by_area)
+```
+
+```{r comparison, results="asis", eval=!is.null(ctx$comparison)}
+cat("\n\n# Comparison between areas\n\n")
+ct <- ctx$comparison$table
+tbl(ct[, 1:6]); cat("\n\n"); tbl(ct[, c(1, 7:ncol(ct))])
+cat("\n\nShared species (descriptive, no statistical testing):\n\n")
+tbl(ctx$comparison$shared_species)
+fig(ctx$figures$comparison)
+```
+
+# Limitations
+
+```{r limits, results="asis"}
+cat(paste0("- ", gsub("([_#$%&{}])", "\\\\\\1", ctx$limitations)), sep = "\n")
+```
