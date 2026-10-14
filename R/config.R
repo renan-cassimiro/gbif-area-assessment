@@ -7,15 +7,16 @@
                              id_column = NULL, fix_invalid = FALSE)),
     gbif = list(
       filters = list(),
-      query = list(max_records = 100000L, page_size = 300L, max_retries = 3L,
+      query = list(method = "search", download_wait_minutes = 720, download_poll_seconds = 30,
+                   keep_download_zip = FALSE, max_records = 100000L, page_size = 300L, max_retries = 3L,
                    retry_wait_seconds = 5, max_filter_combinations = 50L,
                    max_wkt_chars = 8000L),
       cache = list(enabled = TRUE, directory = "data/cache/gbif",
                    use_cached = TRUE, refresh = FALSE)
     ),
     analysis = list(density_cell_km = 5, top_n = 10L, low_coverage_pct = 20,
-                    metric_crs = "auto"),
-    output = list(directory = "results"),
+                    metric_crs = "auto", max_map_points = 50000L),
+    output = list(directory = "results", write_records_layer = TRUE),
     logging = list(level = "INFO")
   )
 }
@@ -85,6 +86,12 @@ validate_config <- function(cfg, root) {
 
   # gbif query / cache
   q <- cfg$gbif$query
+  if (!is.character(q$method) || length(q$method) != 1 || !q$method %in% c("search", "download")) {
+    abort_config("gbif.query.method must be \"search\" or \"download\"")
+  }
+  .check_number(q$download_wait_minutes, "gbif.query.download_wait_minutes", 1, 10080)
+  .check_number(q$download_poll_seconds, "gbif.query.download_poll_seconds", 1, 3600)
+  .check_flag(q$keep_download_zip, "gbif.query.keep_download_zip")
   .check_number(q$max_records, "gbif.query.max_records", 1, 100000, TRUE)
   .check_number(q$page_size, "gbif.query.page_size", 1, 300, TRUE)
   .check_number(q$max_retries, "gbif.query.max_retries", 0, 20, TRUE)
@@ -105,16 +112,19 @@ validate_config <- function(cfg, root) {
   .check_number(an$density_cell_km, "analysis.density_cell_km", 0.001, 10000)
   .check_number(an$top_n, "analysis.top_n", 1, 1000, TRUE)
   .check_number(an$low_coverage_pct, "analysis.low_coverage_pct", 0, 100)
+  .check_number(an$max_map_points, "analysis.max_map_points", 100, 5e6, TRUE)
   if (!is.character(an$metric_crs) || length(an$metric_crs) != 1) abort_config("analysis.metric_crs must be a string")
 
   # output / logging
   if (!is.character(cfg$output$directory) || !nzchar(cfg$output$directory)) {
     abort_config("output.directory must be a non-empty string")
   }
+  .check_flag(cfg$output$write_records_layer, "output.write_records_layer")
   cfg$logging$level <- normalise_log_level(cfg$logging$level)
 
   # filters (validated against rgbif)
   cfg$gbif$filters_normalized <- normalize_gbif_filters(cfg$gbif$filters)
+  if (q$method == "download") check_download_filters(cfg$gbif$filters_normalized)
 
   cfg$paths <- list(
     root = root,

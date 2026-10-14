@@ -1,6 +1,7 @@
 # Local cache of raw GBIF responses --------------------------------------------
 
 .sort_filters <- function(filters) {
+  if (length(filters) == 0) return(list())
   filters <- filters[order(names(filters))]
   lapply(filters, function(v) if (length(v) > 1) sort(unique(v)) else v)
 }
@@ -22,6 +23,7 @@ build_cache_key <- function(query) {
     filters = .sort_filters(query$filters),
     null_overrides = sort(names(query$null_overrides))
   )
+  if (identical(query$method, "download")) canon$method <- "download"
   rlang::hash(yaml::as.yaml(canon))
 }
 

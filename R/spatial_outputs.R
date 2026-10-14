@@ -25,9 +25,14 @@
 #' @param areas Study areas with `area_km2`.
 #' @param records_sf Processed records.
 #' @param density Density grid (`sf`) from [calculate_density()].
+#' @param include_records Whether to include the (possibly huge) records layer.
 #' @return A named list of `sf` layers: `areas`, `gbif_records`, `gbif_density`.
 #' @export
-create_spatial_layers <- function(areas, records_sf, density) {
+create_spatial_layers <- function(areas, records_sf, density, include_records = TRUE) {
+  if (!include_records) {
+    lg_info("gbif_records layer not written (output.write_records_layer = false)")
+    return(list(areas = areas, gbif_density = density))
+  }
   list(areas = areas, gbif_records = .gpkg_safe(records_sf), gbif_density = density)
 }
 

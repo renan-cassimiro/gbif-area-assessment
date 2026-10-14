@@ -6,7 +6,7 @@ Ferramenta exploratória em R para consultar, filtrar, resumir e visualizar regi
 
 A infraestrutura do renv já está no projeto (`.Rprofile`, `renv/activate.R`, `renv/settings.json`, `.Rbuildignore`). **`renv.lock` não vem pronto**: gere-o na sua máquina, com acesso ao CRAN.
 
-```r
+``` r
 renv::install(c("rgbif", "sf", "dplyr", "tidyr", "ggplot2", "yaml", "logger", "rmarkdown", "knitr", "rlang"))
 renv::install(c("mapedit", "leaflet", "shiny"))   # somente para input.area.mode: "draw"
 renv::snapshot()                                   # grava renv.lock — versione renv.lock e renv/activate.R
@@ -14,9 +14,23 @@ renv::snapshot()                                   # grava renv.lock — version
 
 O relatório PDF exige **pandoc** e um motor **LaTeX** (`tinytex::install_tinytex()` resolve).
 
+## Ambiente sem root (conda) — recomendado se `sf` não carregar
+
+`sf` precisa de PROJ/GDAL/GEOS do sistema; o renv não os fornece. O `environment.yml` instala tudo em espaço de usuário (micromamba é um binário único, sem root):
+
+``` bash
+micromamba env create -f environment.yml     # ou: mamba env create -f environment.yml
+micromamba activate gbif-area-assessment
+Rscript -e 'tinytex::install_tinytex()'      # LaTeX em ~/.TinyTeX, sem root (necessário para o PDF)
+export RENV_CONFIG_AUTOLOADER_ENABLED=false  # usa os pacotes do conda, não a biblioteca do renv
+Rscript scripts/run.R config/config.yaml
+```
+
+Neste modo o conda é a fonte da reprodutibilidade (versões no `environment.yml`; use `conda env export --no-builds > environment.lock.yml` para congelar). O renv continua válido onde as bibliotecas do sistema existem.
+
 ## Execução
 
-```bash
+``` bash
 Rscript scripts/run.R config/config.yaml
 ```
 
@@ -30,6 +44,16 @@ Ver comentários em `config/config.yaml`. Pontos principais:
 - **Filtros GBIF** (`gbif.filters`): só os declarados são aplicados. Aceita qualquer argumento de filtro de `rgbif::occ_data()`; os principais têm validação de tipo/valores (enums, intervalos `{min, max}`, países ISO, chaves taxonômicas). Argumentos com default não-nulo no rgbif (ex.: `occurrenceStatus = "PRESENT"`) são explicitamente anulados quando não configurados, para não haver filtro implícito.
 - **Cache** (`gbif.cache`): chave = hash da geometria (WKT), filtros normalizados, defaults do rgbif anulados, API e versão do esquema de cache. Guarda `records.rds` (resposta bruta) + `meta.yaml`. Lê o cache se `enabled && use_cached && !refresh`; grava sempre que `enabled`; a versão anterior é arquivada em `archive/<timestamp>/`. Entrada inconsistente = erro, nunca reutilização silenciosa.
 
+## Download em massa (`gbif.query.method: download`)
+
+Para áreas com mais de \~100 mil registros (ex.: bacias da Amazônia), use `method: download`: o GBIF prepara o arquivo (`rgbif::occ_download`, formato SIMPLE_CSV) e a ferramenta espera, baixa, importa e guarda no mesmo cache bruto.
+
+- Credenciais: copie `.Renviron.example` para `~/.Renviron` (ou para `.Renviron` na raiz do projeto, já ignorado pelo Git) e preencha `GBIF_USER`, `GBIF_PWD`, `GBIF_EMAIL`; reinicie a sessão do R.
+- Um download por área. A chave do pedido fica em `download_pending.yaml` na pasta do cache: se a execução cair ou estourar `download_wait_minutes`, rodar de novo **retoma o mesmo pedido** (não cria outro). O DOI do download vai para o `meta.yaml` e o relatório.
+- Filtros suportados: os tipados do registro (ver `docs/future_work.md` para o que ficou de fora).
+- O mapa de pontos usa amostra sistemática acima de `analysis.max_map_points`; `output.write_records_layer: false` evita gravar milhões de pontos no GPKG.
+- Status: testado com as chamadas ao GBIF simuladas; **ainda não validado contra a API real**.
+
 ## Decisões de implementação
 
 - Cada área é consultada separadamente (um cache por área); registros em áreas sobrepostas contam em cada uma.
@@ -40,6 +64,6 @@ Ver comentários em `config/config.yaml`. Pontos principais:
 
 ## Limitações conhecidas
 
-- A API de busca do GBIF limita a 100 000 registros por consulta; acima disso a execução para com erro (downloads em lote via `occ_download` estão fora desta versão).
+- No modo `search`, a API do GBIF limita a 100 000 registros por consulta; acima disso a execução para com erro (use `method: download`).
 - Polígonos muito detalhados geram WKT longo demais para a URL (`gbif.query.max_wkt_chars`): simplifique o polígono antes; a ferramenta nunca simplifica sozinha.
 - Esta versão não tem testes automatizados (CIDI, seção 2).

@@ -81,11 +81,17 @@ records_to_sf <- function(records) {
 #'
 #' @param records_sf Records from [records_to_sf()] with `area_id`.
 #' @param areas Study areas (`sf`, EPSG:4326).
+#' @param verify If `FALSE`, skip the check (used for downloads, where the
+#'   polygon is applied by GBIF and the check is slow on millions of points).
 #' @return A list with `records` and `removed` (same format as [validate_records()]).
 #' @export
-assign_records_to_areas <- function(records_sf, areas) {
+assign_records_to_areas <- function(records_sf, areas, verify = TRUE) {
   removed <- data.frame(area_id = character(), reason = character(), n = integer(), stringsAsFactors = FALSE)
   if (nrow(records_sf) == 0) return(list(records = records_sf, removed = removed))
+  if (!verify) {
+    lg_info("Point-in-polygon verification skipped (GBIF already applied the polygon filter server-side)")
+    return(list(records = records_sf, removed = removed))
+  }
   keep <- rep(FALSE, nrow(records_sf))
   for (id in areas$area_id) {
     idx <- which(records_sf$area_id == id)

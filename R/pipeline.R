@@ -82,6 +82,7 @@ run_assessment <- function(config_path, root) {
 
   # GBIF ------------------------------------------------------------------------
   filters <- cfg$gbif$filters_normalized
+  lg_info("GBIF query method: ", cfg$gbif$query$method)
   if (length(filters)) {
     for (nm in names(filters)) lg_info("GBIF filter ", nm, " = ", paste(filters[[nm]], collapse = ", "))
   } else lg_info("No GBIF filters configured (spatial restriction only)")
@@ -99,7 +100,8 @@ run_assessment <- function(config_path, root) {
     data.frame(area_id = id, source = r$source, cache_key = r$cache_key,
                queried_at = as.character(r$meta$queried_at),
                n_total_without_filters = as.numeric(r$meta$n_total_without_filters %||% NA),
-               n_retrieved = NROW(r$records), stringsAsFactors = FALSE)
+               n_retrieved = NROW(r$records), method = r$meta$method %||% "search",
+               download_doi = as.character(r$meta$download_doi %||% NA), stringsAsFactors = FALSE)
   }))
   lg_info("Records retrieved in total: ", sum(retrieval$n_retrieved))
   if (sum(retrieval$n_retrieved) == 0) lg_warn("No GBIF records were found for any study area; empty results will be produced")
@@ -109,7 +111,7 @@ run_assessment <- function(config_path, root) {
     combined <- combine_area_records(stats::setNames(lapply(results, `[[`, "records"), names(results)))
     v <- validate_records(combined)
     sfr <- records_to_sf(v$records)
-    asg <- assign_records_to_areas(sfr, areas)
+    asg <- assign_records_to_areas(sfr, areas, verify = identical(cfg$gbif$query$method, "search"))
     list(records = asg$records, removed = rbind(v$removed, asg$removed))
   }, timings)
   records_sf <- proc$records
@@ -132,7 +134,7 @@ run_assessment <- function(config_path, root) {
 
   # outputs -----------------------------------------------------------------------
   run_step("write spatial layers", {
-    layers <- create_spatial_layers(areas, records_sf, metrics$density)
+    layers <- create_spatial_layers(areas, records_sf, metrics$density, cfg$output$write_records_layer)
     write_spatial_layers(layers, file.path(run_dir, "spatial", "gbif_area_assessment.gpkg"))
   }, timings)
   tables <- c(list(retrieval = retrieval, removed_records = proc$removed,
@@ -145,7 +147,7 @@ run_assessment <- function(config_path, root) {
     fd <- file.path(run_dir, "figures")
     f <- list()
     f$areas_map <- save_plot(plot_areas(areas), file.path(fd, "map_areas.png"))
-    rm_ <- plot_records(areas, records_sf); dm_ <- plot_density(metrics$density, areas)
+    rm_ <- plot_records(areas, records_sf, cfg$analysis$max_map_points); dm_ <- plot_density(metrics$density, areas)
     nm <- .safe_name(areas$area_id)
     f$records_maps <- stats::setNames(lapply(seq_along(rm_), function(i) save_plot(rm_[[i]], file.path(fd, paste0("map_records_", nm[i], ".png")))), areas$area_id)
     f$density_maps <- stats::setNames(lapply(seq_along(dm_), function(i) save_plot(dm_[[i]], file.path(fd, paste0("map_density_", nm[i], ".png")))), areas$area_id)

@@ -1,0 +1,11 @@
+# Credenciais do GBIF para downloads (gbif.query.method: download).
+# NÃO versione este arquivo preenchido. Copie e preencha:
+#
+#   cp .Renviron.example ~/.Renviron          # vale para todos os projetos, ou
+#   cp .Renviron.example .Renviron            # só este projeto (já está no .gitignore)
+#
+# Depois, reinicie a sessão do R (no RStudio: Session > Restart R).
+# Sem aspas e sem espaços ao redor do "=".
+GBIF_USER=seu_usuario_gbif
+GBIF_PWD=sua_senha_gbif
+GBIF_EMAIL=seu_email@exemplo.org

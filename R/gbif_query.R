@@ -52,7 +52,8 @@ area_to_wkt <- function(geometry) {
 #' @export
 build_gbif_query <- function(area_id, geometry, filters, query_cfg) {
   wkt <- area_to_wkt(geometry)
-  if (nchar(wkt) > query_cfg$max_wkt_chars) {
+  method <- query_cfg$method %||% "search"
+  if (method == "search" && nchar(wkt) > query_cfg$max_wkt_chars) {
     stop("Geometry of area '", area_id, "' has a WKT of ", nchar(wkt), " characters (limit ",
          query_cfg$max_wkt_chars, "; gbif.query.max_wkt_chars). Provide a simpler polygon: ",
          "the tool never simplifies geometries silently.", call. = FALSE)
@@ -61,12 +62,16 @@ build_gbif_query <- function(area_id, geometry, filters, query_cfg) {
     area_id = area_id,
     geometry = wkt,
     filters = filters,
-    filter_sets = expand_filter_sets(filters, query_cfg$max_filter_combinations),
-    null_overrides = rgbif_default_overrides(names(filters)),
+    method = method,
+    filter_sets = if (method == "search") expand_filter_sets(filters, query_cfg$max_filter_combinations) else list(list()),
+    null_overrides = if (method == "search") rgbif_default_overrides(names(filters)) else list(),
     max_records = query_cfg$max_records,
     page_size = query_cfg$page_size,
     max_retries = query_cfg$max_retries,
-    retry_wait_seconds = query_cfg$retry_wait_seconds
+    retry_wait_seconds = query_cfg$retry_wait_seconds,
+    download = list(wait_minutes = query_cfg$download_wait_minutes,
+                    poll_seconds = query_cfg$download_poll_seconds,
+                    keep_zip = query_cfg$keep_download_zip)
   )
 }
 
@@ -227,7 +232,13 @@ get_gbif_records <- function(query, cache_cfg, cache_dir, tool_version) {
   else if (cache_cfg$refresh) lg_info("Cache refresh requested; querying the GBIF API")
   else if (!cache_cfg$use_cached) lg_info("use_cached = false; querying the GBIF API")
   else lg_info("No cached query found; querying the GBIF API")
-  res <- query_gbif(query)
+  res <- if (identical(query$method, "download")) {
+    query_gbif_download(query,
+                        work_dir = if (cache_cfg$enabled) file.path(cache_dir, key) else file.path(tempdir(), key),
+                        wait_minutes = query$download$wait_minutes,
+                        poll_seconds = query$download$poll_seconds,
+                        keep_zip = query$download$keep_zip)
+  } else query_gbif(query)
   meta <- c(list(cache_key = key, area_id = query$area_id, tool_version = tool_version,
                  cache_schema = .CACHE_SCHEMA_VERSION, geometry_wkt = query$geometry,
                  filters = query$filters, rgbif_default_overrides = names(query$null_overrides)),

@@ -14,21 +14,20 @@ input:
 
 gbif:
   # Somente filtros declarados aqui são aplicados (nenhum filtro científico implícito).
-  # Qualquer argumento de filtro de rgbif::occ_data() é aceito; os principais são validados por tipo.
+  # Só o polígono por padrão; exemplos (descomente se necessário):
   filters:
-    basisOfRecord:
-      - HUMAN_OBSERVATION
-      - PRESERVED_SPECIMEN
-    occurrenceStatus:
-      - PRESENT
-    hasCoordinate: true
-    hasGeospatialIssue: false
-    year:
-      min: 1900
-      max: 2026
+    # basisOfRecord: [PRESERVED_SPECIMEN]       # dados de curadoria
+    # hasCoordinate: true
+    # year: {min: 2000, max: 2026}
 
-  query:                            # parâmetros técnicos da consulta (opcionais)
-    max_records: 100000             # limite da API de busca (offset + limit <= 100000)
+  query:
+    method: "download"              # "download" (occ_download, assíncrono, sem teto) ou "search" (paginado, teto de 100 mil)
+    # --- method: download (exige GBIF_USER, GBIF_PWD, GBIF_EMAIL no ~/.Renviron) ---
+    download_wait_minutes: 720      # tempo máximo de espera pelo GBIF; ao estourar, rodar de novo retoma o mesmo pedido
+    download_poll_seconds: 30
+    keep_download_zip: false        # manter o zip após importar (ocupa disco)
+    # --- method: search ---
+    max_records: 100000
     page_size: 300
     max_retries: 3
     retry_wait_seconds: 5
@@ -43,9 +42,11 @@ analysis:                           # parâmetros descritivos (opcionais)
   density_cell_km: 5                # lado da célula da grade de densidade
   top_n: 10                         # nº de táxons/grupos mais frequentes por área
   low_coverage_pct: 20              # abaixo disso a cobertura espacial é sinalizada no relatório
+  max_map_points: 50000             # mapa de pontos usa amostra sistemática acima disso
   metric_crs: "auto"                # "auto" = Lambert azimutal de áreas iguais centrado nas áreas; ou um código (ex.: "EPSG:5880")
 
 output:
+  write_records_layer: true         # false = não grava a camada gbif_records no GPKG (útil com milhões de registros)
   directory: "results"              # cada execução cria results/run_YYYYMMDD_HHMMSS/
 
 logging:

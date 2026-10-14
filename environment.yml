@@ -1,0 +1,26 @@
+# Ambiente sem root (conda-forge): R + PROJ/GDAL/GEOS + pacotes R compatíveis entre si.
+#   micromamba/mamba env create -f environment.yml
+#   conda activate gbif-area-assessment
+# Não foi testado neste arquivo exato; ajuste versões se o solver reclamar.
+name: gbif-area-assessment
+channels:
+  - conda-forge
+dependencies:
+  - r-base >=4.3
+  - pandoc
+  - r-sf
+  - r-dplyr
+  - r-tidyr
+  - r-ggplot2
+  - r-yaml
+  - r-logger
+  - r-rlang
+  - r-rgbif
+  - r-rmarkdown
+  - r-knitr
+  - r-tinytex
+  - r-renv
+  - r-mapedit
+  - r-leaflet
+  - r-shiny
+  - r-rstudioapi

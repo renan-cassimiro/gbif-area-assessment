@@ -18,16 +18,22 @@ plot_areas <- function(areas) {
 #' Maps of GBIF records, one per area
 #' @param areas Study areas.
 #' @param records_sf Processed records.
+#' @param max_points Maximum points drawn per map (systematic sample above this).
 #' @return A named list of ggplots (names = area ids); `NULL` entries for areas without records.
 #' @export
-plot_records <- function(areas, records_sf) {
+plot_records <- function(areas, records_sf, max_points = 50000L) {
   stats::setNames(lapply(areas$area_id, function(id) {
     r <- records_sf[records_sf$area_id == id, ]
     if (nrow(r) == 0) return(NULL)
+    n_all <- nrow(r)
+    if (n_all > max_points) {
+      r <- r[unique(round(seq(1, n_all, length.out = max_points))), ]
+      lg_info("Map of '", id, "' shows a systematic sample of ", nrow(r), " of ", n_all, " records")
+    }
     ggplot2::ggplot() +
       ggplot2::geom_sf(data = areas[areas$area_id == id, ], fill = NA, colour = "grey20") +
       ggplot2::geom_sf(data = r, size = 0.3, alpha = 0.4, colour = "#1b6ca8") +
-      ggplot2::labs(title = paste("GBIF records:", id), subtitle = paste(nrow(r), "records")) + .theme()
+      ggplot2::labs(title = paste("GBIF records:", id), subtitle = if (n_all > nrow(r)) paste0(nrow(r), " of ", n_all, " records (systematic sample)") else paste(n_all, "records")) + .theme()
   }), areas$area_id)
 }
 

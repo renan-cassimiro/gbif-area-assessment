@@ -26,6 +26,11 @@ build_limitations <- function(ctx) {
                          "% of ", ctx$config$analysis$density_cell_km, " km cells with records) in: ",
                          paste(low, collapse = ", "), "."))
   }
+  r <- ctx$retrieval
+  if (any(r$method == "download")) {
+    out <- c(out, paste0("Records obtained through GBIF occurrence downloads (SIMPLE_CSV); cite the DOI(s): ",
+                         paste(stats::na.omit(unique(r$download_doi)), collapse = ", "), "."))
+  }
   c(out,
     "Record counts reflect data availability in GBIF, not sampling effort or true biodiversity; no bias correction, rarefaction or inference was performed.",
     "Species, genus and family counts use the GBIF backbone fields; records identified only at higher ranks do not contribute to them.",

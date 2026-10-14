@@ -21,3 +21,6 @@ data/input/*
 
 # OS
 .DS_Store
+
+# Credenciais
+.Renviron
