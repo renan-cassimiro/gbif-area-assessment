@@ -18,7 +18,8 @@ Imports:
     logger,
     rmarkdown,
     knitr,
-    rlang
+    rlang,
+    terra
 Suggests:
     mapedit,
     leaflet,

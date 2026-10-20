@@ -9,6 +9,7 @@ dependencies:
   - r-base >=4.3
   - pandoc
   - r-sf
+  - r-terra
   - r-dplyr
   - r-tidyr
   - r-ggplot2

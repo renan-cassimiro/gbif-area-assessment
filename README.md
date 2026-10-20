@@ -7,7 +7,7 @@ Ferramenta exploratória em R para consultar, filtrar, resumir e visualizar regi
 A infraestrutura do renv já está no projeto (`.Rprofile`, `renv/activate.R`, `renv/settings.json`, `.Rbuildignore`). **`renv.lock` não vem pronto**: gere-o na sua máquina, com acesso ao CRAN.
 
 ``` r
-renv::install(c("rgbif", "sf", "dplyr", "tidyr", "ggplot2", "yaml", "logger", "rmarkdown", "knitr", "rlang"))
+renv::install(c("rgbif", "sf", "terra", "dplyr", "tidyr", "ggplot2", "yaml", "logger", "rmarkdown", "knitr", "rlang"))
 renv::install(c("mapedit", "leaflet", "shiny"))   # somente para input.area.mode: "draw"
 renv::snapshot()                                   # grava renv.lock — versione renv.lock e renv/activate.R
 ```
@@ -43,6 +43,22 @@ Ver comentários em `config/config.yaml`. Pontos principais:
 - **Entrada**: `input.area.mode` = `gpkg` (um único arquivo; 1 polígono = análise individual, 2+ = individual + comparação) ou `draw` (um polígono desenhado no navegador, salvo em `spatial/drawn_area.gpkg`). Sem `id_column`, usa uma coluna identificadora adequada ou gera `area_01`, `area_02`, ... (registrado no log). Geometrias inválidas só são corrigidas com `fix_invalid: true`.
 - **Filtros GBIF** (`gbif.filters`): só os declarados são aplicados. Aceita qualquer argumento de filtro de `rgbif::occ_data()`; os principais têm validação de tipo/valores (enums, intervalos `{min, max}`, países ISO, chaves taxonômicas). Argumentos com default não-nulo no rgbif (ex.: `occurrenceStatus = "PRESENT"`) são explicitamente anulados quando não configurados, para não haver filtro implícito.
 - **Cache** (`gbif.cache`): chave = hash da geometria (WKT), filtros normalizados, defaults do rgbif anulados, API e versão do esquema de cache. Guarda `records.rds` (resposta bruta) + `meta.yaml`. Lê o cache se `enabled && use_cached && !refresh`; grava sempre que `enabled`; a versão anterior é arquivada em `archive/<timestamp>/`. Entrada inconsistente = erro, nunca reutilização silenciosa.
+
+## Filtragem posterior dos registros em cache
+
+A filtragem posterior é um fluxo independente do download/avaliação. Ela lê apenas as entradas de cache explicitamente listadas em `config/filter.yaml`; não chama a API do GBIF, não exige credenciais e não altera `records.rds` ou `meta.yaml`. Antes de executar, substitua o caminho de cache de exemplo e o caminho do raster.
+
+```bash
+Rscript scripts/filter.R config/filter.yaml
+```
+
+Teste determinístico do núcleo do filtro (cria um raster sintético local; não acessa o GBIF):
+
+```bash
+Rscript tests/test_filtering.R .
+```
+
+A versão inicial aceita um único raster de valores discretos. O raster deve estar explicitamente em **EPSG:4326**; CRS ausente ou diferente interrompe a execução, sem reprojeção automática. `accepted_values` contém os códigos de célula a manter. Cada execução cria `results/filtering/run_*/` com perfis brutos/pré/pós-filtro, resumo das exclusões por etapa e motivo, registros retidos, metadados, log e relatório PDF independente. A filtragem não implementa regras de qualidade taxonômica ou outras regras futuras.
 
 ## Download em massa (`gbif.query.method: download`)
 

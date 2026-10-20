@@ -6,8 +6,8 @@ project:
 
 input:
   area:
-    mode: "draw"                    # "gpkg" ou "draw" (mutuamente exclusivos)
-    path: null   # obrigatório se mode = "gpkg"; deve ser null se mode = "draw"
+    mode: "gpkg"                    # "gpkg" ou "draw" (mutuamente exclusivos)
+    path: "data/input/bacia_rio_tefe.gpkg"   # obrigatório se mode = "gpkg"; deve ser null se mode = "draw"
     layer: null                     # obrigatório se o GPKG tiver mais de uma camada
     id_column: null                 # coluna identificadora; null = detecção automática ou area_01, area_02, ...
     fix_invalid: false              # true = corrige geometrias inválidas com st_make_valid() (registrado no log)
@@ -39,7 +39,7 @@ gbif:
     refresh: false
 
 analysis:                           # parâmetros descritivos (opcionais)
-  density_cell_km: 5                # lado da célula da grade de densidade
+  density_cell_km: 20                # lado da célula da grade de densidade
   top_n: 10                         # nº de táxons/grupos mais frequentes por área
   low_coverage_pct: 20              # abaixo disso a cobertura espacial é sinalizada no relatório
   max_map_points: 50000             # mapa de pontos usa amostra sistemática acima disso

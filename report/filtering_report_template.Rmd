@@ -1,0 +1,141 @@
+---
+title: "GBIF Occurrence Filtering Report"
+author: "gbif-area-assessment"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+params:
+  context_file: null
+header-includes:
+  - \usepackage{longtable}
+  - \usepackage{booktabs}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  results = "asis"
+)
+
+ctx <- readRDS(params$context_file)
+
+# Convert Windows paths to LaTeX-safe paths.
+normalize_path <- function(x) {
+  if (is.null(x) || !is.character(x)) {
+    return(x)
+  }
+
+  gsub("\\\\", "/", x)
+}
+
+# Normalize paths displayed in the report.
+if (!is.null(ctx$raster$path)) {
+  ctx$raster$path <- normalize_path(ctx$raster$path)
+}
+
+fmt <- function(x) {
+  knitr::kable(
+    x,
+    format = "latex",
+    booktabs = TRUE,
+    longtable = TRUE,
+    na = ""
+  )
+}
+```
+
+# Run summary
+
+- **Project:** `r ctx$project`
+- **Run ID:** `r ctx$run_id`
+- **Generated:** `r ctx$generated_at`
+- **Tool version:** `r ctx$tool_version`
+- **Git:** commit `r ctx$git$commit`; branch `r ctx$git$branch`; dirty state `r ctx$git$dirty`
+- **R:** `r ctx$environment$r_version`
+- **Platform:** `r ctx$environment$platform`
+- **renv active:** `r ctx$environment$renv_active`
+
+This report describes observed GBIF data availability and the effect of the configured filter. It does not estimate true biodiversity or validate the ecological correctness of the raster.
+
+# Input cache entries
+
+```{r}
+fmt(ctx$input_entries[,c('area_id','cache_key','source_records','n_total_without_filters','queried_at','method','filters','download_doi','records_md5_before','records_md5_after')])
+```
+
+The workflow does not query GBIF, submit or poll downloads, or require GBIF credentials. Raw cache files are treated as read-only.
+
+# Raster filter
+
+- **Raster:** `r ctx$raster$path`
+- **CRS:** `r ctx$raster$crs`
+- **Layers/bands:** `r ctx$raster$nlyr`
+- **Data type:** `r ctx$raster$datatype`
+- **Resolution:** `r paste(ctx$raster$resolution,collapse=' × ')`
+- **Extent:** `r paste(ctx$raster$extent,collapse=', ')`
+- **MD5:** `r ctx$raster$md5`
+- **Accepted cell codes:** `r paste(ctx$raster$accepted_values,collapse=', ')`
+
+The raster must explicitly use EPSG:4326. Matching uses exact discrete cell-code membership; automatic reprojection is disabled.
+
+# Record profiles
+
+## Raw records loaded from cache
+
+```{r}
+fmt(ctx$profile_raw)
+```
+
+## Technically valid records before raster filtering
+
+```{r}
+fmt(ctx$profile_before_filter)
+```
+
+## Retained records after raster filtering
+
+```{r}
+fmt(ctx$profile_after_filter)
+```
+
+The same metrics are used for each profile. Technical validation removals are distinct from raster-filter removals.
+
+## Record counts across stages
+
+```{r, out.width='95%'}
+knitr::include_graphics("figures/record_counts_before_after.png")
+```
+
+# Filtering summary
+
+```{r}
+fmt(ctx$filter_summary)
+```
+
+## Removed records by stage and reason
+
+```{r}
+if(nrow(ctx$removed_records)) fmt(ctx$removed_records) else cat('No records were removed.\n')
+```
+
+# Provenance and execution
+
+```{r}
+if(length(ctx$timings)) fmt(data.frame(stage=names(ctx$timings),seconds=unlist(ctx$timings),row.names=NULL))
+```
+
+## Warnings
+
+```{r}
+if(length(ctx$warnings)) cat(paste0('- ',ctx$warnings,collapse='\n')) else cat('No warnings recorded.\n')
+```
+
+## Limitations
+
+```{r}
+cat(paste0('- ',ctx$limitations,collapse='\n'))
+```

@@ -1,0 +1,21 @@
+# Replace placeholder paths before running. This workflow reads local cache only.
+project:
+  name: "gbif_area_assessment"
+input:
+  cache_entries:
+    - "data/cache/gbif/0110cb99f2be9f10d63d699b1225a163"
+filters:
+  spatial:
+    raster:
+      enabled: true
+      path: "data/input/LBA_Amazon_wetland_dual-season_veg_flood_3arcsec_reclassified_cog/LBA_Amazon_wetland_dual-season_veg_flood_3arcsec_reclassified_cog.tif"
+      accepted_values: [1]
+analysis:
+  top_n: 10
+  density_cell_km: 5
+  metric_crs: "auto"
+  max_map_points: 50000
+output:
+  directory: "results/filtering"
+logging:
+  level: "INFO"

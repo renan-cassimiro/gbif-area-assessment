@@ -40,3 +40,8 @@ Itens deliberadamente **fora** da versão atual. A versão atual cobre o essenci
 - Gerar e versionar `renv.lock` (precisa de CRAN).
 - Testar o modo `draw` no RStudio Server e a compilação LaTeX no Windows com a correção atual.
 - Testes automatizados (fora do escopo do CIDI atual).
+
+
+## Filtragem posterior de ocorrências
+
+Implementado em `scripts/filter.R`: um filtro espacial `spatial.raster` com valores discretos exatos, aplicado aos registros de entradas de cache selecionadas explicitamente. O raster precisa estar em EPSG:4326. Filtros de qualidade (por exemplo, regras taxonômicas ou flags de qualidade) permanecem fora do escopo e não são executados.
