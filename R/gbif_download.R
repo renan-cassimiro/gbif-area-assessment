@@ -71,7 +71,6 @@ build_download_predicates <- function(geometry_wkt, filters) {
 #' @export
 query_gbif_download <- function(query, work_dir, wait_minutes, poll_seconds, keep_zip = FALSE) {
   missing_env <- Filter(function(v) !nzchar(Sys.getenv(v)), c("GBIF_USER", "GBIF_PWD", "GBIF_EMAIL"))
-  browser()
   if (length(missing_env)) {
     stop("GBIF downloads need credentials in environment variables; missing: ",
          paste(missing_env, collapse = ", "), ". Set them in ~/.Renviron.", call. = FALSE)
@@ -86,12 +85,8 @@ query_gbif_download <- function(query, work_dir, wait_minutes, poll_seconds, kee
   } else {
     preds <- build_download_predicates(query$geometry, query$filters)
     lg_info("Requesting GBIF download (", .DOWNLOAD_FORMAT, ") for area '", query$area_id, "'")
-    lg_info("User", preds)
-    
     req <- do.call(rgbif::occ_download, c(preds, list(format = .DOWNLOAD_FORMAT)))
     key <- as.character(req)[1]
-    
-    
     yaml::write_yaml(list(download_key = key, area_id = query$area_id,
                           requested_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")), pending)
     lg_info("GBIF download requested: ", key)

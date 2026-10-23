@@ -24,4 +24,5 @@ Suggests:
     mapedit,
     leaflet,
     shiny,
+    rstudioapi,
     roxygen2

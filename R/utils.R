@@ -92,7 +92,7 @@ environment_info <- function(root) {
   proj <- Sys.getenv("RENV_PROJECT", unset = "")
   active <- nzchar(proj) && identical(normalizePath(proj, mustWork = FALSE),
                                       normalizePath(root, mustWork = FALSE))
-  pkgs <- c("rgbif", "sf", "dplyr", "tidyr", "ggplot2", "logger", "yaml", "rmarkdown", "knitr")
+  pkgs <- c("rgbif", "sf", "dplyr", "tidyr", "ggplot2", "logger", "yaml", "terra", "rmarkdown", "knitr")
   versions <- vapply(pkgs, function(p) {
     tryCatch(as.character(utils::packageVersion(p)), error = function(e) NA_character_)
   }, character(1))

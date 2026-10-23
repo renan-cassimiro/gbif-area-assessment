@@ -1,141 +1,143 @@
 ---
-title: "GBIF Occurrence Filtering Report"
-author: "gbif-area-assessment"
-date: "`r format(Sys.Date(), '%Y-%m-%d')`"
-output:
-  pdf_document:
-    toc: true
-    number_sections: true
+title: "GBIF occurrence filtering — before/after report"
+output: pdf_document
 params:
-  context_file: null
+  context_file: NULL
 header-includes:
-  - \usepackage{longtable}
+  - \usepackage{float}
   - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \floatplacement{figure}{H}
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-  echo = FALSE,
-  message = FALSE,
-  warning = FALSE,
-  results = "asis"
-)
-
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, comment = "")
 ctx <- readRDS(params$context_file)
-
-# Convert Windows paths to LaTeX-safe paths.
-normalize_path <- function(x) {
-  if (is.null(x) || !is.character(x)) {
-    return(x)
+tbl <- function(df, ...) {
+  if (is.null(df) || nrow(df) == 0) return(cat("_No data._\n\n"))
+  print(knitr::kable(df, format = "latex", booktabs = TRUE, linesep = "", digits = 2,
+                     longtable = nrow(df) > 25, row.names = FALSE, ...))
+}
+# LaTeX runs in a scratch directory where render_report() copied the figures to figures/
+fig <- function(path) {
+  if (!is.null(path) && length(path) == 1 && !is.na(path) && file.exists(path)) {
+    cat("\n\\begin{figure}[H]\n\\centering\n\\includegraphics[width=\\textwidth,height=0.45\\textheight,keepaspectratio]{",
+        paste0("figures/", basename(path)), "}\n\\end{figure}\n\n", sep = "")
   }
-
-  gsub("\\\\", "/", x)
 }
+figs <- function(lst) for (p in lst) fig(p)
+esc <- function(x) gsub("([_#$%&{}])", "\\\\\\1", x)
+S <- ctx$profiles
+keep <- c("area_id", "n_records", "n_species", "n_genera", "n_families", "n_records_without_species")
+```
 
-# Normalize paths displayed in the report.
-if (!is.null(ctx$raster$path)) {
-  ctx$raster$path <- normalize_path(ctx$raster$path)
+# Identification
+
+```{r ident, results="asis"}
+env <- ctx$environment
+tbl(data.frame(
+  Item = c("Project", "Filtering run", "Generated at", "Tool version", "Git", "R", "Platform", "renv active", "renv.lock md5", "Config file"),
+  Value = c(ctx$project, ctx$run_id, ctx$generated_at, ctx$tool_version,
+            if (ctx$git$available) paste0(ctx$git$commit, " (", ctx$git$branch,
+                                          if (isTRUE(ctx$git$dirty)) ", uncommitted changes" else "", ")") else "not available",
+            env$r_version, env$platform, if (env$renv_active) "yes" else "no",
+            if (is.na(env$renv_lock_md5)) "no renv.lock" else env$renv_lock_md5, ctx$config_path),
+  stringsAsFactors = FALSE))
+cat("\nThis report describes the **observed availability of GBIF records** and the **effect of the configured filters**. It does not estimate true biodiversity and does not validate the ecological correctness of the raster.\n\n")
+cat("This run read existing cache entries only: no GBIF query, download or credentials were used, and the cache files were not modified.\n")
+```
+
+Effective configuration:
+
+```{r cfg}
+cat(yaml::as.yaml(ctx$config_effective, handlers = list(logical = yaml::verbatim_logical)))
+```
+
+# Source cache entries
+
+```{r inputs, results="asis"}
+i <- ctx$inputs
+tbl(data.frame(area = i$area_id, method = i$method, queried_at = i$queried_at,
+               n_raw = i$n_records_loaded, geometry = ifelse(i$geometry_available, "yes", "no")))
+cat("**Cache keys and source queries**\n\n")
+tbl(data.frame(area = i$area_id, cache_key = i$cache_key))
+cat("\n**Source query filters**\n\n")
+cat(paste0("- ", esc(i$area_id), ": ", esc(i$query_filters), ifelse(is.na(i$download_doi), "", paste0(" (download DOI: ", esc(i$download_doi), ")"))), sep = "\n")
+cat("\n")
+cat("**Input file fingerprints (MD5)**\n\n")
+tbl(data.frame(area = i$area_id, records_md5 = i$records_md5, meta_md5 = i$meta_md5))
+```
+
+# Applied filters
+
+```{r filters, results="asis"}
+tbl(ctx$filters_applied)
+if (!is.null(ctx$raster)) {
+  r <- ctx$raster$raster
+  cat("\nThe raster must be EPSG:4326 and is not reprojected. `accepted_values` are raw numeric cell codes matched exactly",
+      "(no category labels, ranges or thresholds). Records outside the raster, on NoData cells, or on other values are removed.\n")
+  if (isTRUE(r$categorical)) cat("\nThe raster is categorical; codes, not labels, were compared.\n")
+  if (r$n_layers > 1) cat("\nThe raster has", r$n_layers, "layers; only the first was used.\n")
 }
+```
 
-fmt <- function(x) {
-  knitr::kable(
-    x,
-    format = "latex",
-    booktabs = TRUE,
-    longtable = TRUE,
-    na = ""
-  )
+# Record counts by stage
+
+Each stage's denominator is the set of records passed into it (after earlier stages); removals per stage are **not** necessarily unique across criteria.
+
+```{r counts, results="asis"}
+st <- ctx$stages
+tbl(st[, c("area_id", "stage_order", "filter_id", "n_input", "n_retained", "n_removed")])
+cat("**Totals**\n\n")
+tot <- data.frame(stage = c("Raw (cache)", "Pre-filter (technically valid)", "Post-filter (retained)"),
+                  n_records = c(sum(S$raw$summary$n_records), sum(S$pre_filter$summary$n_records), sum(S$post_filter$summary$n_records)))
+tbl(tot)
+```
+
+# Removals by stage and reason
+
+```{r removed, results="asis"}
+tbl(ctx$removed)
+```
+
+# Descriptive profiles (same metrics, per area)
+
+Observed distinct taxa are not true richness. Spatial metrics are not computed for the raw profile.
+
+```{r profiles, results="asis"}
+cat("## Raw (as stored in the cache)\n\n"); tbl(S$raw$summary[, c(keep, "year_min", "year_max")])
+cat("\n\n## Pre-filter (technically valid records)\n\n"); tbl(S$pre_filter$summary[, c(keep, "year_min", "year_max")])
+cat("\n\n## Post-filter\n\n"); tbl(S$post_filter$summary[, c(keep, "year_min", "year_max")])
+cat("\n\n## Spatial coverage (pre-filter vs post-filter)\n\n")
+sp <- c("area_id", "area_km2", "n_records", "records_per_km2", "coverage_pct", "top10pct_cells_share_pct")
+tbl(cbind(stage = "pre-filter", S$pre_filter$summary[, sp])); cat("\n\n")
+tbl(cbind(stage = "post-filter", S$post_filter$summary[, sp]))
+cat("\n\n## Temporal coverage\n\n")
+tp <- c("area_id", "year_min", "year_max", "n_years_with_records", "n_records_without_year")
+tbl(cbind(stage = "pre-filter", S$pre_filter$summary[, tp])); cat("\n\n")
+tbl(cbind(stage = "post-filter", S$post_filter$summary[, tp]))
+fig(ctx$figures$profile_comparison)
+fig(ctx$figures$year_comparison)
+```
+
+# Maps
+
+```{r maps, results="asis"}
+for (id in names(ctx$figures$records_before)) {
+  fig(ctx$figures$records_before[[id]]); fig(ctx$figures$records_after[[id]])
+  fig(ctx$figures$density_before[[id]]); fig(ctx$figures$density_after[[id]])
 }
 ```
 
-# Run summary
+# Warnings, timings and limitations
 
-- **Project:** `r ctx$project`
-- **Run ID:** `r ctx$run_id`
-- **Generated:** `r ctx$generated_at`
-- **Tool version:** `r ctx$tool_version`
-- **Git:** commit `r ctx$git$commit`; branch `r ctx$git$branch`; dirty state `r ctx$git$dirty`
-- **R:** `r ctx$environment$r_version`
-- **Platform:** `r ctx$environment$platform`
-- **renv active:** `r ctx$environment$renv_active`
-
-This report describes observed GBIF data availability and the effect of the configured filter. It does not estimate true biodiversity or validate the ecological correctness of the raster.
-
-# Input cache entries
-
-```{r}
-fmt(ctx$input_entries[,c('area_id','cache_key','source_records','n_total_without_filters','queried_at','method','filters','download_doi','records_md5_before','records_md5_after')])
-```
-
-The workflow does not query GBIF, submit or poll downloads, or require GBIF credentials. Raw cache files are treated as read-only.
-
-# Raster filter
-
-- **Raster:** `r ctx$raster$path`
-- **CRS:** `r ctx$raster$crs`
-- **Layers/bands:** `r ctx$raster$nlyr`
-- **Data type:** `r ctx$raster$datatype`
-- **Resolution:** `r paste(ctx$raster$resolution,collapse=' × ')`
-- **Extent:** `r paste(ctx$raster$extent,collapse=', ')`
-- **MD5:** `r ctx$raster$md5`
-- **Accepted cell codes:** `r paste(ctx$raster$accepted_values,collapse=', ')`
-
-The raster must explicitly use EPSG:4326. Matching uses exact discrete cell-code membership; automatic reprojection is disabled.
-
-# Record profiles
-
-## Raw records loaded from cache
-
-```{r}
-fmt(ctx$profile_raw)
-```
-
-## Technically valid records before raster filtering
-
-```{r}
-fmt(ctx$profile_before_filter)
-```
-
-## Retained records after raster filtering
-
-```{r}
-fmt(ctx$profile_after_filter)
-```
-
-The same metrics are used for each profile. Technical validation removals are distinct from raster-filter removals.
-
-## Record counts across stages
-
-```{r, out.width='95%'}
-knitr::include_graphics("figures/record_counts_before_after.png")
-```
-
-# Filtering summary
-
-```{r}
-fmt(ctx$filter_summary)
-```
-
-## Removed records by stage and reason
-
-```{r}
-if(nrow(ctx$removed_records)) fmt(ctx$removed_records) else cat('No records were removed.\n')
-```
-
-# Provenance and execution
-
-```{r}
-if(length(ctx$timings)) fmt(data.frame(stage=names(ctx$timings),seconds=unlist(ctx$timings),row.names=NULL))
-```
-
-## Warnings
-
-```{r}
-if(length(ctx$warnings)) cat(paste0('- ',ctx$warnings,collapse='\n')) else cat('No warnings recorded.\n')
-```
-
-## Limitations
-
-```{r}
-cat(paste0('- ',ctx$limitations,collapse='\n'))
+```{r tail, results="asis"}
+cat("**Warnings and errors**\n\n")
+w <- unique(ctx$warnings)
+if (length(w)) cat(paste0("- ", esc(w)), sep = "\n") else cat("_None._\n")
+cat("\n\n**Stage timings (seconds)**\n\n")
+tbl(data.frame(step = names(ctx$timings), seconds = unlist(ctx$timings)))
+cat("\n\n**Limitations**\n\n")
+cat(paste0("- ", esc(ctx$limitations)), sep = "\n")
+cat("\n\n**Run status**\n\nThis report is produced only when the run reaches the report stage; the final status (`completed` or `failed`) is in `run_status.yaml`.\n")
 ```

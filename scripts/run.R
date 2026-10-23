@@ -1,12 +1,7 @@
 #!/usr/bin/env Rscript
 # Usage: Rscript scripts/run.R config/config.yaml
 
-#TODO habilitar para rodar por linha de comando
 args <- commandArgs(trailingOnly = TRUE)
-
-#TODO habilitar para rodar no R
-# args <- function(trailingOnly = TRUE) "config/config.yaml"
-
 if (length(args) != 1) {
   cat("Usage: Rscript scripts/run.R <config.yaml>\n", file = stderr())
   quit(status = 2)

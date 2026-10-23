@@ -61,6 +61,7 @@ set_log_level <- function(level) {
 #' @export
 add_log_file <- function(file) {
   ensure_dir(dirname(file))
+  if (!file.exists(file)) file.create(file)
   logger::log_appender(logger::appender_tee(file), index = 1)
   invisible(file)
 }

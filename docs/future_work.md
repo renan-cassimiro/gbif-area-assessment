@@ -41,7 +41,16 @@ Itens deliberadamente **fora** da versão atual. A versão atual cobre o essenci
 - Testar o modo `draw` no RStudio Server e a compilação LaTeX no Windows com a correção atual.
 - Testes automatizados (fora do escopo do CIDI atual).
 
+## Filtragem (`scripts/filter.R`)
 
-## Filtragem posterior de ocorrências
+Implementado na v1: filtro espacial por **um** raster EPSG:4326 com valores discretos exatos (códigos de célula).
+Planejado, não implementado:
 
-Implementado em `scripts/filter.R`: um filtro espacial `spatial.raster` com valores discretos exatos, aplicado aos registros de entradas de cache selecionadas explicitamente. O raster precisa estar em EPSG:4326. Filtros de qualidade (por exemplo, regras taxonômicas ou flags de qualidade) permanecem fora do escopo e não são executados.
+- **Filtros de qualidade** (categoria `quality` no registro `filter_registry()`): sem regras, configurações ou métricas ainda.
+- Raster em outro CRS com transformação explícita **dos pontos** (hoje o raster precisa ser EPSG:4326; ver nota abaixo).
+- Valores por rótulo de categoria, intervalos/limiares, vários rasters e combinações AND/OR.
+- Benchmark em escala (milhões de registros) e leitura em chunks do `records.rds`; hoje a extração é feita em blocos de 500 mil pontos, sem benchmark.
+- Validar em Windows e com caches reais de downloads (`occ_download`).
+
+Nota: o CIDI de filtragem pede, ao mesmo tempo, raster **obrigatoriamente EPSG:4326** (sem reprojetar raster nem pontos) e que a
+extração "trate corretamente raster em CRS diferente". A v1 segue a regra explícita (rejeita CRS diferente com erro claro).

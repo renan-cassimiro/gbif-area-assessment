@@ -1,9 +1,20 @@
-# Replace placeholder paths before running. This workflow reads local cache only.
+# Filtragem independente de registros GBIF já em cache (scripts/filter.R).
+# Não consulta o GBIF, não exige credenciais e nunca altera o cache.
+# Caminhos relativos são resolvidos a partir da raiz do projeto.
+#
+# ATENÇÃO: os caminhos abaixo são PLACEHOLDERS. Substitua pela pasta real da entrada de cache
+# (a chave aparece no log/relatório da execução de run.R) e pelo seu raster.
+
 project:
   name: "gbif_area_assessment"
 input:
   cache_entries:
     - "data/cache/gbif/0110cb99f2be9f10d63d699b1225a163"
+    # - "data/cache/gbif/a03529e297aef2ce344730562fa07750"
+    # - "data/cache/gbif/bae2950d1a92ce55067a2d7ce40e0943"
+    # - "data/cache/gbif/c6e06c45beda8d2a93993e12fb53669d"
+    # - "data/cache/gbif/7d301d9250c7ca7f12cd2e327bccfb9e"
+    # - "data/cache/gbif/dd32ceb44ec949ba13f9b3be2d609a75"
 filters:
   spatial:
     raster:
@@ -15,6 +26,8 @@ analysis:
   density_cell_km: 5
   metric_crs: "auto"
   max_map_points: 50000
+  low_coverage_pct: 20
+
 output:
   directory: "results/filtering"
 logging:
