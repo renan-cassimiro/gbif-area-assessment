@@ -35,7 +35,7 @@ keep <- c("area_id", "n_records", "n_species", "n_genera", "n_families", "n_reco
 
 ```{r ident, results="asis"}
 env <- ctx$environment
-tbl(data.frame(
+idt <- (data.frame(
   Item = c("Project", "Filtering run", "Generated at", "Tool version", "Git", "R", "Platform", "renv active", "renv.lock md5", "Config file"),
   Value = c(ctx$project, ctx$run_id, ctx$generated_at, ctx$tool_version,
             if (ctx$git$available) paste0(ctx$git$commit, " (", ctx$git$branch,
@@ -43,6 +43,16 @@ tbl(data.frame(
             env$r_version, env$platform, if (env$renv_active) "yes" else "no",
             if (is.na(env$renv_lock_md5)) "no renv.lock" else env$renv_lock_md5, ctx$config_path),
   stringsAsFactors = FALSE))
+lin <- ctx$lineage
+if (!is.null(lin)) {
+  pr <- lin$parent_run
+  idt <- rbind(idt, data.frame(
+    Item = c("Run type", "Run label", "Parent run"),
+    Value = c(lin$run_type, if (is.null(lin$run_label)) "-" else lin$run_label,
+              if (is.null(pr)) "-" else paste0(pr$run_id, if (is.null(pr$run_label)) "" else paste0(" (", pr$run_label, ")"))),
+    stringsAsFactors = FALSE))
+}
+tbl(idt)
 cat("\nThis report describes the **observed availability of GBIF records** and the **effect of the configured filters**. It does not estimate true biodiversity and does not validate the ecological correctness of the raster.\n\n")
 cat("This run read existing cache entries only: no GBIF query, download or credentials were used, and the cache files were not modified.\n")
 ```

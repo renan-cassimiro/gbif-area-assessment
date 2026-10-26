@@ -386,3 +386,13 @@ GBIF (`search` ou `download`) com os filtros configurados; cache bruto reutiliz�
 métricas descritivas; mapas e gráficos; comparação com 2+ áreas; camadas em GPKG; PDF; logs detalhados; registro de
 configuração, origem dos dados (API/cache, DOI) e ambiente (Git, R, `renv`) — de forma reprodutível com `renv`.
 **Pendente para considerar o critério cumprido em produção:** os itens "não validados" da seção 21.
+
+---
+
+## Alterações posteriores ao v2 (ferramenta 0.1.0 + saídas)
+
+- `scripts/filter.R` (módulo `R/filtering.R`): filtragem independente de entradas de cache por raster EPSG:4326 (ver README).
+- `output.spatial_format: geoparquet | gpkg` (padrão geoparquet; GeoParquet 1.0.0 escrito com `arrow`); `write_spatial_layers(layers, dir, name, format)`.
+- `output.darwin_core` (`R/darwincore.R`): Darwin Core Archive por área (zip: `occurrence.txt`, `meta.xml`, `eml.xml`, `provenance.yaml`).
+- `output.run_label` (prefixo da pasta/log), `input.from_run` (filtragem a partir de uma run de assessment) e bloco `lineage` em `run_status.yaml`.
+- Novas dependências: `terra`, `arrow`, `zip`.

@@ -25,7 +25,7 @@ run_assessment <- function(config_path, root) {
     lg_error(conditionMessage(e))
     lg_error("Analysis aborted; no final report was produced.")
     if (!is.null(state$run_dir)) {
-      try(yaml::write_yaml(list(status = "failed", error = conditionMessage(e),
+      try(yaml::write_yaml(list(status = "failed", error = conditionMessage(e), lineage = state$lineage,
                                 finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")),
                            file.path(state$run_dir, "run_status.yaml")), silent = TRUE)
     }
@@ -45,11 +45,15 @@ run_assessment <- function(config_path, root) {
   set_log_level(cfg$logging$level)
 
   run_id <- format(started, "%Y%m%d_%H%M%S")
-  run_dir <- file.path(cfg$paths$output, paste0("run_", run_id))
+  label <- cfg$output$run_label
+  prefix <- if (is.null(label)) "" else paste0(label, "_")
+  run_dir <- file.path(cfg$paths$output, paste0(prefix, "run_", run_id))
   if (dir.exists(run_dir)) stop("Run directory already exists: ", run_dir, call. = FALSE)
+  lineage <- list(run_type = "assessment", run_id = .yq(run_id), run_label = .yq(label), parent_run = NULL, cache_keys = NULL)
+  state$lineage <- lineage
   for (d in c("figures", "spatial", "tables", "logs", "report")) ensure_dir(file.path(run_dir, d))
   state$run_dir <- run_dir
-  add_log_file(file.path(run_dir, "logs", paste0("run_", run_id, ".log")))
+  add_log_file(file.path(run_dir, "logs", paste0(prefix, "run_", run_id, ".log")))
   file.copy(config_path, file.path(run_dir, "config_original.yaml"))
   cfg_eff <- cfg; cfg_eff$gbif$filters_normalized <- NULL
   yaml::write_yaml(cfg_eff[names(cfg_eff) != "paths"], file.path(run_dir, "config_effective.yaml"))
@@ -103,6 +107,8 @@ run_assessment <- function(config_path, root) {
                n_retrieved = NROW(r$records), method = r$meta$method %||% "search",
                download_doi = as.character(r$meta$download_doi %||% NA), stringsAsFactors = FALSE)
   }))
+  lineage$cache_keys <- as.list(stats::setNames(retrieval$cache_key, retrieval$area_id))
+  state$lineage <- lineage
   lg_info("Records retrieved in total: ", sum(retrieval$n_retrieved))
   if (sum(retrieval$n_retrieved) == 0) lg_warn("No GBIF records were found for any study area; empty results will be produced")
 
@@ -135,8 +141,34 @@ run_assessment <- function(config_path, root) {
   # outputs -----------------------------------------------------------------------
   run_step("write spatial layers", {
     layers <- create_spatial_layers(areas, records_sf, metrics$density, cfg$output$write_records_layer)
-    write_spatial_layers(layers, file.path(run_dir, "spatial", "gbif_area_assessment.gpkg"))
+    write_spatial_layers(layers, file.path(run_dir, "spatial"), "gbif_area_assessment", cfg$output$spatial_format)
   }, timings)
+  if (isTRUE(cfg$output$darwin_core$enabled)) {
+    run_step("write Darwin Core archives", {
+      for (i in seq_len(nrow(areas))) {
+        id <- areas$area_id[i]
+        r <- results[[id]]
+        recs <- records_sf[records_sf$area_id == id, ]
+        if (nrow(recs) == 0) { lg_warn("No records for area '", id, "'; Darwin Core archive skipped"); next }
+        doi <- r$meta$download_doi
+        doi <- if (is.null(doi) || is.na(doi)) NULL else as.character(doi)
+        fl <- if (nrow(filters_table <- data.frame(filter = names(filters), value = vapply(filters, function(v) paste(v, collapse = ", "), ""))))
+          paste(filters_table$filter, "=", filters_table$value, collapse = "; ") else "none (spatial restriction only)"
+        write_dwca(recs, file.path(run_dir, "darwincore"), id, cfg$output$darwin_core, list(
+          project = cfg$project$name, run_id = run_id,
+          summary = paste0("Occurrence records from GBIF inside study area ", id, " (", nrow(recs), " records after technical validation)."),
+          methods = c(paste0("Records were retrieved from GBIF (method: ", cfg$gbif$query$method, ", source: ", r$source, ", queried at ", r$meta$queried_at, ") with the filters: ", fl, "."),
+                      paste0("Cache key: ", r$cache_key, ". Run ", run_id, " of gbif-area-assessment ", tool_version, "."),
+                      "Technical validation removed records with missing or invalid coordinates and duplicated gbifID; no scientific filtering was applied."),
+          doi = doi, citation = if (!is.null(doi)) paste0("GBIF.org (", format(Sys.Date(), "%d %B %Y"), ") GBIF Occurrence Download https://doi.org/", doi) else NULL,
+          bbox = as.numeric(sf::st_bbox(areas[i, ]))[c(1, 3, 2, 4)],
+          details = list(run_id = .yq(run_id), run_label = .yq(label), cache_key = r$cache_key, method = cfg$gbif$query$method,
+                         queried_at = r$meta$queried_at, download_doi = doi, filters = as.list(filters),
+                         geometry_wkt = r$meta$geometry_wkt, tool_version = tool_version)),
+          prefix = prefix)
+      }
+    }, timings)
+  }
   tables <- c(list(retrieval = retrieval, removed_records = proc$removed,
                    area_summary = metrics$area, taxonomic = metrics$taxonomic,
                    temporal = metrics$temporal, spatial_summary = metrics$spatial),
@@ -166,7 +198,7 @@ run_assessment <- function(config_path, root) {
                               value = vapply(filters, function(v) paste(v, collapse = ", "), ""),
                               stringsAsFactors = FALSE)
   ctx <- list(
-    project = cfg$project$name, run_id = run_id, run_dir = run_dir, config_path = config_path,
+    project = cfg$project$name, run_id = run_id, run_dir = run_dir, lineage = lineage, config_path = config_path,
     generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
     tool_version = tool_version, git = git_info(root), environment = env,
     config = cfg, config_effective = cfg_eff, input_mode = a$mode,
@@ -182,7 +214,7 @@ run_assessment <- function(config_path, root) {
                                               file.path(run_dir, "report", "gbif_area_assessment.pdf")), timings)
 
   dur <- round(as.numeric(difftime(Sys.time(), started, units = "secs")), 1)
-  yaml::write_yaml(list(status = "completed", run_id = run_id, duration_seconds = dur,
+  yaml::write_yaml(list(status = "completed", run_id = .yq(run_id), lineage = lineage, duration_seconds = dur,
                         finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")),
                    file.path(run_dir, "run_status.yaml"))
   lg_info("Analysis completed successfully (", dur, " s). Results: ", run_dir)

@@ -15,6 +15,9 @@ dependencies:
   - r-yaml
   - r-logger
   - r-rlang
+  - r-terra
+  - r-arrow      # GeoParquet
+  - r-zip        # Darwin Core Archive
   - r-rgbif
   - r-rmarkdown
   - r-knitr

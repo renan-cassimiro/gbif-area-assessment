@@ -7,14 +7,13 @@
 
 project:
   name: "gbif_area_assessment"
+
 input:
-  cache_entries:
-    - "data/cache/gbif/0110cb99f2be9f10d63d699b1225a163"
-    # - "data/cache/gbif/a03529e297aef2ce344730562fa07750"
-    # - "data/cache/gbif/bae2950d1a92ce55067a2d7ce40e0943"
-    # - "data/cache/gbif/c6e06c45beda8d2a93993e12fb53669d"
-    # - "data/cache/gbif/7d301d9250c7ca7f12cd2e327bccfb9e"
-    # - "data/cache/gbif/dd32ceb44ec949ba13f9b3be2d609a75"
+  # Use UMA das duas formas:
+  from_run: "results/bacia_rio_tefe_run_20261026_165300"   # run de assessment concluída: as entradas de cache vêm dela (retrieval.csv + config_effective.yaml)
+  # cache_entries:                  # ou seleção explícita (a raiz do cache nunca é varrida)
+  #   - "data/cache/gbif/<cache_key>"   # uma entrada por área; area_id vem do meta.yaml e não pode repetir
+
 filters:
   spatial:
     raster:
@@ -29,6 +28,12 @@ analysis:
   low_coverage_pct: 20
 
 output:
-  directory: "results/filtering"
+  directory: "results/filtering"    # cada execução cria results/filtering/[<run_label>_]run_YYYYMMDD_HHMMSS/
+  run_label: null                   # null = herda o label da run indicada em from_run (se houver)
+  spatial_format: "geoparquet"      # geoparquet | gpkg
+  darwin_core:                      # produto final: registros retidos em Darwin Core Archive, um zip por área
+    enabled: true
+    creator: "Renan Cassimiro Brito"           # obrigatório se enabled: true
+
 logging:
   level: "INFO"

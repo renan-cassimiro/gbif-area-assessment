@@ -19,7 +19,9 @@ Imports:
     rmarkdown,
     knitr,
     rlang,
-    terra
+    terra,
+    arrow,
+    zip
 Suggests:
     mapedit,
     leaflet,

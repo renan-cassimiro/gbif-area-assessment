@@ -42,11 +42,12 @@ filter_registry <- function() {
 .filter_config_defaults <- function() {
   list(
     project = list(name = "gbif_area_assessment"),
-    input = list(cache_entries = NULL),
+    input = list(cache_entries = NULL, from_run = NULL),
     filters = list(),
     analysis = list(top_n = 10L, density_cell_km = 5, metric_crs = "auto",
                     max_map_points = 50000L, low_coverage_pct = 20),
-    output = list(directory = "results/filtering"),
+    output = list(directory = "results/filtering", spatial_format = "geoparquet", run_label = NULL,
+                  darwin_core = list(enabled = FALSE)),
     logging = list(level = "INFO")
   )
 }
@@ -72,8 +73,15 @@ validate_filter_config <- function(cfg, root) {
   if (!is.character(nm) || length(nm) != 1 || !nzchar(nm)) abort_config("project.name must be a non-empty string")
 
   ce <- unlist(cfg$input$cache_entries, use.names = FALSE)
+  from_run <- cfg$input$from_run
+  parent <- NULL
+  if (!is.null(from_run) && !is.null(ce)) abort_config("use either input.from_run or input.cache_entries, not both")
+  if (!is.null(from_run)) {
+    parent <- read_parent_run(from_run, root)
+    ce <- parent$cache_entries
+  }
   if (is.null(ce) || length(ce) == 0 || !is.character(ce) || anyNA(ce) || any(!nzchar(ce))) {
-    abort_config("input.cache_entries must list one or more cache entry directories (explicit selection; the cache root is never scanned)")
+    abort_config("set input.cache_entries (explicit cache entry directories) or input.from_run (an assessment run directory); the cache root is never scanned")
   }
   resolved <- vapply(ce, function(p) normalizePath(resolve_path(p, root), winslash = "/", mustWork = FALSE), "")
   if (anyDuplicated(resolved)) {
@@ -89,8 +97,10 @@ validate_filter_config <- function(cfg, root) {
   if (!is.character(cfg$output$directory) || !nzchar(cfg$output$directory)) {
     abort_config("output.directory must be a non-empty string")
   }
+  validate_output_options(cfg$output)
   cfg$logging$level <- normalise_log_level(cfg$logging$level)
 
+  cfg$parent_run <- parent
   cfg$filters_enabled <- .resolve_enabled_filters(cfg$filters, root)
   cfg$paths <- list(root = root, cache_entries = unname(resolved),
                     output = resolve_path(cfg$output$directory, root))
@@ -132,6 +142,41 @@ validate_filter_config <- function(cfg, root) {
   }
   if (length(enabled) == 0) abort_config("no filter is enabled; enable at least one filter (e.g. filters.spatial.raster.enabled: true)")
   enabled
+}
+
+# Parent (assessment) run ----------------------------------------------------------
+
+#' Read an assessment run to derive its cache entries
+#'
+#' Uses only files written by `run_assessment()`: `run_status.yaml` (must be
+#' `completed`), `config_effective.yaml` (cache directory) and
+#' `tables/retrieval.csv` (cache key per area). Nothing is modified.
+#'
+#' @param path Assessment run directory (absolute or relative to `root`).
+#' @param root Project root directory.
+#' @return A list with `cache_entries`, `run_id`, `run_label`, `run_type`, `run_dir`.
+#' @export
+read_parent_run <- function(path, root) {
+  if (!is.character(path) || length(path) != 1 || !nzchar(path)) abort_config("input.from_run must be a directory path")
+  dir <- normalizePath(resolve_path(path, root), winslash = "/", mustWork = FALSE)
+  if (!dir.exists(dir)) abort_config("input.from_run directory not found: ", dir)
+  need <- file.path(dir, c("run_status.yaml", "config_effective.yaml", "tables/retrieval.csv"))
+  miss <- need[!file.exists(need)]
+  if (length(miss)) abort_config("input.from_run is not a completed assessment run (missing ", paste(basename(miss), collapse = ", "), "): ", dir)
+  st <- yaml::read_yaml(need[1])
+  if (!identical(st$status, "completed")) abort_config("input.from_run run did not complete (status: ", st$status %||% "unknown", "): ", dir)
+  if (!is.null(st$lineage$run_type) && !identical(st$lineage$run_type, "assessment")) {
+    abort_config("input.from_run must be an assessment run (found run_type: ", st$lineage$run_type, ")")
+  }
+  eff <- yaml::read_yaml(need[2])
+  cache_dir <- eff$gbif$cache$directory
+  if (!is.character(cache_dir) || !nzchar(cache_dir)) abort_config("could not find gbif.cache.directory in ", need[2])
+  ret <- utils::read.csv(need[3], stringsAsFactors = FALSE)
+  if (!"cache_key" %in% names(ret) || nrow(ret) == 0) abort_config("tables/retrieval.csv has no cache keys: ", dir)
+  rid <- if (is.numeric(st$run_id)) sub("^([0-9]{8})([0-9]{6})$", "\\1_\\2", format(st$run_id, scientific = FALSE)) else as.character(st$run_id)
+  list(cache_entries = file.path(resolve_path(cache_dir, root), ret$cache_key), run_id = rid,
+       run_label = if (is.null(st$lineage$run_label)) NA_character_ else as.character(st$lineage$run_label),
+       run_type = "assessment", run_dir = dir)
 }
 
 # Raster filter -----------------------------------------------------------------
@@ -569,7 +614,7 @@ run_filtering <- function(config_path, root) {
     lg_error("Filtering aborted; no final report was produced.")
     if (!is.null(state$run_dir)) {
       unchanged <- if (is.null(state$inputs)) NA else tryCatch(verify_inputs_unchanged(state$inputs), error = function(e2) FALSE)
-      try(yaml::write_yaml(list(status = "failed", error = conditionMessage(e), inputs_unchanged = unchanged,
+      try(yaml::write_yaml(list(status = "failed", error = conditionMessage(e), lineage = state$lineage, inputs_unchanged = unchanged,
                                 finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")),
                            file.path(state$run_dir, "run_status.yaml")), silent = TRUE)
     }
@@ -588,13 +633,22 @@ run_filtering <- function(config_path, root) {
   set_log_level(cfg$logging$level)
 
   run_id <- format(started, "%Y%m%d_%H%M%S")
-  run_dir <- file.path(cfg$paths$output, paste0("run_", run_id))
+  parent <- cfg$parent_run
+  label <- cfg$output$run_label %||% (if (!is.null(parent) && !is.na(parent$run_label)) parent$run_label else NULL)
+  prefix <- if (is.null(label)) "" else paste0(label, "_")
+  run_dir <- file.path(cfg$paths$output, paste0(prefix, "run_", run_id))
   if (dir.exists(run_dir)) stop("Run directory already exists: ", run_dir, call. = FALSE)
+  lineage <- list(run_type = "filtering", run_id = .yq(run_id), run_label = .yq(label),
+                  parent_run = if (is.null(parent)) NULL else list(run_type = parent$run_type, run_id = .yq(parent$run_id),
+                                                                    run_label = if (is.na(parent$run_label)) NULL else .yq(parent$run_label),
+                                                                    run_dir = parent$run_dir),
+                  cache_keys = NULL)
+  state$lineage <- lineage
   for (d in c("figures", "spatial", "tables", "logs", "report")) ensure_dir(file.path(run_dir, d))
   state$run_dir <- run_dir
-  add_log_file(file.path(run_dir, "logs", paste0("run_", run_id, ".log")))
+  add_log_file(file.path(run_dir, "logs", paste0(prefix, "run_", run_id, ".log")))
   file.copy(config_path, file.path(run_dir, "config_original.yaml"))
-  cfg_eff <- cfg[setdiff(names(cfg), c("filters_enabled", "paths"))]
+  cfg_eff <- cfg[setdiff(names(cfg), c("filters_enabled", "paths", "parent_run"))]
   cfg_eff$filters_effective <- lapply(cfg$filters_enabled, function(e) list(id = e$spec$id, category = e$spec$category, params = e$params))
   yaml::write_yaml(cfg_eff, file.path(run_dir, "config_effective.yaml"))
   lg_info("Run directory: ", run_dir)
@@ -610,6 +664,8 @@ run_filtering <- function(config_path, root) {
   loaded <- run_step("load cache entries", load_filter_inputs(cfg$paths$cache_entries), timings)
   state$inputs <- loaded$inputs
   area_ids <- loaded$inputs$area_id
+  lineage$cache_keys <- as.list(stats::setNames(loaded$inputs$cache_key, area_ids))
+  state$lineage <- lineage
   top_n <- cfg$analysis$top_n; cell_km <- cfg$analysis$density_cell_km
 
   areas <- NULL; metric_crs <- NULL
@@ -663,10 +719,40 @@ run_filtering <- function(config_path, root) {
   run_step("write tables", write_output_tables(tables, file.path(run_dir, "tables")), timings)
 
   run_step("write spatial output", {
-    layers <- list(gbif_filtered_records = .gpkg_safe(fr$records))
+    layers <- list(gbif_filtered_records = fr$records)
     if (!is.null(areas)) layers$areas <- areas
-    write_spatial_layers(layers, file.path(run_dir, "spatial", "gbif_filtered_records.gpkg"))
+    write_spatial_layers(layers, file.path(run_dir, "spatial"), "gbif_filtered_records", cfg$output$spatial_format)
   }, timings)
+  if (isTRUE(cfg$output$darwin_core$enabled)) {
+    run_step("write Darwin Core archives", {
+      for (id in area_ids) {
+        recs <- fr$records[fr$records$area_id == id, ]
+        if (nrow(recs) == 0) { lg_warn("No retained records for area '", id, "'; Darwin Core archive skipped"); next }
+        i <- loaded$inputs[loaded$inputs$area_id == id, ]
+        m <- loaded$meta[[id]]
+        doi <- if (is.na(i$download_doi)) NULL else i$download_doi
+        fdesc <- paste(vapply(fr$applied, function(a) paste0(a$id, " [", paste(a$parameters$parameter, "=", a$parameters$value, collapse = "; "), "]"), ""), collapse = "; ")
+        s <- stages[stages$area_id == id, ]
+        bb <- if (is.null(areas) || !id %in% areas$area_id) NULL else as.numeric(sf::st_bbox(areas[areas$area_id == id, ]))[c(1, 3, 2, 4)]
+        write_dwca(recs, file.path(run_dir, "darwincore"), id, cfg$output$darwin_core, list(
+          project = cfg$project$name, run_id = run_id,
+          summary = paste0("GBIF occurrence records for study area ", id, " retained after post-retrieval filtering (", nrow(recs), " of ",
+                           s$n_input[s$stage_order == 1], " cached records)."),
+          methods = c(paste0("Source: GBIF records cached under key ", i$cache_key, " (method: ", i$method, ", queried at ", i$queried_at,
+                             "; query filters: ", i$query_filters, ")."),
+                      paste0("Filtering run ", run_id, " of gbif-area-assessment ", tool_version, ": technical validation followed by ", fdesc, "."),
+                      "The derived raster cell value is stored in dynamicProperties (raster_value). Counts per stage are in provenance.yaml."),
+          doi = doi, citation = if (!is.null(doi)) paste0("GBIF.org (", format(Sys.Date(), "%d %B %Y"), ") GBIF Occurrence Download https://doi.org/", doi) else NULL,
+          bbox = bb,
+          details = list(run_id = .yq(run_id), run_label = .yq(label), parent_run = lineage$parent_run, cache_key = i$cache_key, source_method = i$method,
+                         source_queried_at = i$queried_at, source_query_filters = i$query_filters, download_doi = doi,
+                         filters_applied = lapply(fr$applied, function(a) list(id = a$id, category = a$category, parameters = as.list(stats::setNames(a$parameters$value, a$parameters$parameter)))),
+                         stages = lapply(seq_len(nrow(s)), function(k) as.list(s[k, c("filter_id", "n_input", "n_retained", "n_removed")])),
+                         geometry_wkt = m$geometry_wkt, tool_version = tool_version)),
+          prefix = prefix)
+      }
+    }, timings)
+  }
 
   figs <- run_step("create figures", {
     fd <- file.path(run_dir, "figures"); f <- list()
@@ -688,7 +774,7 @@ run_filtering <- function(config_path, root) {
   # report ------------------------------------------------------------------------------------
   filters_applied <- do.call(rbind, lapply(fr$applied, function(a) cbind(category = a$category, filter_id = a$id, a$parameters)))
   ctx <- list(
-    project = cfg$project$name, run_id = run_id, run_dir = run_dir, config_path = config_path,
+    project = cfg$project$name, run_id = run_id, run_dir = run_dir, lineage = lineage, config_path = config_path,
     generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), tool_version = tool_version, git = git, environment = env,
     config = cfg_eff, config_effective = cfg_eff, inputs = loaded$inputs, applied = fr$applied,
     filters_applied = filters_applied,
@@ -706,7 +792,7 @@ run_filtering <- function(config_path, root) {
 
   unchanged <- verify_inputs_unchanged(loaded$inputs)
   dur <- round(as.numeric(difftime(Sys.time(), started, units = "secs")), 1)
-  yaml::write_yaml(list(status = "completed", run_id = run_id, duration_seconds = dur, inputs_unchanged = unchanged,
+  yaml::write_yaml(list(status = "completed", run_id = .yq(run_id), lineage = lineage, duration_seconds = dur, inputs_unchanged = unchanged,
                         n_raw = nrow(raw), n_pre_filter = nrow(valid), n_retained = nrow(fr$records),
                         finished_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")),
                    file.path(run_dir, "run_status.yaml"))

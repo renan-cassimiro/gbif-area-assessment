@@ -54,3 +54,12 @@ Planejado, não implementado:
 
 Nota: o CIDI de filtragem pede, ao mesmo tempo, raster **obrigatoriamente EPSG:4326** (sem reprojetar raster nem pontos) e que a
 extração "trate corretamente raster em CRS diferente". A v1 segue a regra explícita (rejeita CRS diferente com erro claro).
+
+## Saídas (GeoParquet, Darwin Core, associação de runs)
+
+- **GeoParquet:** escrita própria via `arrow`, sempre EPSG:4326 (sem chave `crs`, que significa OGC:CRS84). Falta: outros CRS (PROJJSON),
+  orientação de anéis/`edges`, colunas de lista, particionamento para milhões de registros, leitura de volta no QGIS/GDAL (só validado com `arrow` e `geopandas`).
+- **Darwin Core:** mapeamento de termos por lista estática (DwC, Dublin Core e GBIF); os URIs do namespace GBIF não foram validados no GBIF Data Validator.
+  Falta: extensão Multimedia, `occurrenceID` como id quando existir, EML com mais campos (ORCID, palavras-chave, projeto), escrita mais rápida para milhões de linhas
+  (hoje `write.table`), registro como derived dataset no GBIF.
+- **Associação de runs:** `from_run` liga a filtragem a uma run de assessment; falta um índice central (`runs_index.csv`) e vínculo inverso (assessment -> filtragens).

@@ -105,3 +105,14 @@ environment_info <- function(root) {
     package_versions = as.list(versions)
   )
 }
+
+#' Force a string to be quoted when written to YAML
+#'
+#' Run ids such as `20261024_055915` and numeric-looking labels are read back as
+#' numbers by YAML 1.1 parsers (underscores are allowed in integers), losing the
+#' original text. Marking them as quoted preserves them.
+#'
+#' @param x A character value or `NULL`.
+#' @return `x` with the `quoted` attribute, or `NULL`.
+#' @keywords internal
+.yq <- function(x) if (is.null(x)) NULL else structure(as.character(x), quoted = TRUE)

@@ -16,7 +16,8 @@
     ),
     analysis = list(density_cell_km = 5, top_n = 10L, low_coverage_pct = 20,
                     metric_crs = "auto", max_map_points = 50000L),
-    output = list(directory = "results", write_records_layer = TRUE),
+    output = list(directory = "results", write_records_layer = TRUE, spatial_format = "geoparquet",
+                  run_label = NULL, darwin_core = list(enabled = FALSE)),
     logging = list(level = "INFO")
   )
 }
@@ -120,6 +121,7 @@ validate_config <- function(cfg, root) {
     abort_config("output.directory must be a non-empty string")
   }
   .check_flag(cfg$output$write_records_layer, "output.write_records_layer")
+  validate_output_options(cfg$output)
   cfg$logging$level <- normalise_log_level(cfg$logging$level)
 
   # filters (validated against rgbif)
@@ -133,4 +135,42 @@ validate_config <- function(cfg, root) {
     output = resolve_path(cfg$output$directory, root)
   )
   cfg
+}
+
+.DWC_CONFIG_KEYS <- c("enabled", "title", "creator", "institution", "email", "abstract", "license_text", "language")
+
+#' Validate the output options shared by the assessment and filtering configs
+#'
+#' Checks `run_label` (used as run-directory prefix), `spatial_format`
+#' (`geoparquet` needs the `arrow` package) and the optional `darwin_core`
+#' block (a `creator` is mandatory when enabled, as EML requires one).
+#'
+#' @param out The `output` section of a configuration.
+#' @return `TRUE`, invisibly; errors with a configuration message otherwise.
+#' @keywords internal
+validate_output_options <- function(out) {
+  lab <- out$run_label
+  if (!is.null(lab) && (!is.character(lab) || length(lab) != 1 || !grepl("^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$", lab))) {
+    abort_config("output.run_label must be 1-40 characters: letters, digits, '_' or '-', starting with a letter or digit")
+  }
+  fmt <- out$spatial_format
+  if (!is.character(fmt) || length(fmt) != 1 || !fmt %in% .SPATIAL_FORMATS) {
+    abort_config("output.spatial_format must be one of: ", paste(.SPATIAL_FORMATS, collapse = ", "))
+  }
+  if (fmt == "geoparquet" && !requireNamespace("arrow", quietly = TRUE)) {
+    abort_config("output.spatial_format = \"geoparquet\" needs the 'arrow' package (install it) or use \"gpkg\"")
+  }
+  dwc <- out$darwin_core
+  if (!is.list(dwc)) abort_config("output.darwin_core must be a mapping")
+  bad <- setdiff(names(dwc), .DWC_CONFIG_KEYS)
+  if (length(bad)) abort_config("unknown output.darwin_core option(s): ", paste(bad, collapse = ", "))
+  .check_flag(dwc$enabled, "output.darwin_core.enabled")
+  for (k in setdiff(names(dwc), "enabled")) {
+    v <- dwc[[k]]
+    if (!is.null(v) && (!is.character(v) || length(v) != 1 || !nzchar(v))) abort_config("output.darwin_core.", k, " must be a non-empty string")
+  }
+  if (isTRUE(dwc$enabled) && is.null(dwc$creator)) {
+    abort_config("output.darwin_core.creator is required when Darwin Core output is enabled (EML needs a dataset creator)")
+  }
+  invisible(TRUE)
 }

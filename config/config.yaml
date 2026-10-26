@@ -39,15 +39,26 @@ gbif:
     refresh: false
 
 analysis:                           # parâmetros descritivos (opcionais)
-  density_cell_km: 20                # lado da célula da grade de densidade
+  density_cell_km: 5                # lado da célula da grade de densidade
   top_n: 10                         # nº de táxons/grupos mais frequentes por área
   low_coverage_pct: 20              # abaixo disso a cobertura espacial é sinalizada no relatório
   max_map_points: 50000             # mapa de pontos usa amostra sistemática acima disso
   metric_crs: "auto"                # "auto" = Lambert azimutal de áreas iguais centrado nas áreas; ou um código (ex.: "EPSG:5880")
 
 output:
-  write_records_layer: true         # false = não grava a camada gbif_records no GPKG (útil com milhões de registros)
-  directory: "results"              # cada execução cria results/run_YYYYMMDD_HHMMSS/
+  write_records_layer: true         # false = não grava a camada gbif_records (útil com milhões de registros)
+  spatial_format: "geoparquet"      # geoparquet (um .parquet por camada, GeoParquet 1.0, exige o pacote arrow) | gpkg
+  run_label: "bacia_rio_tefe"                   # prefixo do nome da pasta da run (ex.: "purus_b1" -> purus_b1_run_YYYYMMDD_HHMMSS); use o mesmo no filter.yaml
+  darwin_core:                      # Darwin Core Archive (zip) por área: occurrence.txt + meta.xml + eml.xml + provenance.yaml
+    enabled: true
+    creator: "Renan Cassimiro Brito"           # obrigatório se enabled: true (o EML exige um criador)
+    institution: "USP"
+    email: "renancb@usp.br"
+    title: "PULSAmazônia - GBIF occurrences - Bacia Rio Tefé"                  # padrão: "<projeto> - GBIF occurrences - <area>"
+    abstract: "null"
+    license_text: "null"            # padrão: registros mantêm a licença do campo `license`; citar o DOI do download
+    language: "eng"
+  directory: "results"              # cada execução cria results/[<run_label>_]run_YYYYMMDD_HHMMSS/
 
 logging:
   level: "INFO"                     # DEBUG, INFO, WARN, ERROR
